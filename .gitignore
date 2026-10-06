@@ -1,0 +1,19 @@
+# Static app: no dependency/build setup is needed.
+node_modules/
+.firebase/
+.cache/
+*-debug.log
+*.log
+.env
+.env.*
+!.env.example
+*service-account*.json
+*serviceAccount*.json
+*private-key*.json
+*.pem
+*.key
+credentials*.json
+work/
+*.zip
+.DS_Store
+Thumbs.db

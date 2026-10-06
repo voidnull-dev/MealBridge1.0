@@ -1,0 +1,566 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Deploy this file in Firebase Console -> Firestore Database -> Rules.
+    function ownGoogleProfile(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email_verified == true;
+    }
+    // Phase 7: email is an initial server-enforced allowlist, never a role badge.
+    // Deploy in Firebase Console. Upgrade to trusted Admin SDK-issued Custom Claims
+    // before expanding administrators; never issue claims from a browser.
+    function intendedAdmin() {
+      return request.auth.token.email == 'suryanshdevniranjan@gmail.com';
+    }
+    function admin() {
+      return request.auth != null && ownGoogleProfile(request.auth.uid) && intendedAdmin();
+    }
+    function adminVerification(uid) {
+      let d = request.resource.data;
+      return admin() && resource.data.role in ['hostel','ngo'] && resource.data.uid == uid
+        && d.diff(resource.data).affectedKeys().hasOnly(['isVerified','verificationStatus','verifiedAt','verifiedBy','verificationReviewedAt','verificationReviewedBy','verificationPublicNote','updatedAt'])
+        && d.verificationStatus in ['pending','verified','rejected']
+        && d.isVerified == (d.verificationStatus == 'verified') && (!d.isVerified || agraProfile(d))
+        && d.verificationReviewedAt == request.time && d.verificationReviewedBy == request.auth.uid
+        && d.updatedAt == request.time && d.get('verificationPublicNote','') is string && d.get('verificationPublicNote','').size() <= 500
+        && (d.isVerified ? (d.verifiedAt == request.time && d.verifiedBy == request.auth.uid)
+          : !d.keys().hasAny(['verifiedAt','verifiedBy']))
+        && getAfter(/databases/$(database)/documents/organizationStatus/$(uid)).data.isVerified == d.isVerified
+        && getAfter(/databases/$(database)/documents/organizationStatus/$(uid)).data.verificationStatus == d.verificationStatus
+        && getAfter(/databases/$(database)/documents/organizationStatus/$(uid)).data.updatedAt == request.time
+        && (!exists(/databases/$(database)/documents/organizations/$(uid)) || organizationPair(uid,d));
+    }
+    function validFields(data) {
+      return data.keys().hasAll(['uid','name','email','photoURL','role','organizationName','phone','city','isVerified','createdAt','updatedAt'])
+        && data.keys().hasOnly(['uid','name','email','photoURL','role','organizationName','phone','city','isVerified','createdAt','updatedAt','verificationStatus','verifiedAt','verifiedBy','verificationReviewedAt','verificationReviewedBy','serviceRegion','state','country','isServiceable','locality','shortDescription','registrationLocation','verificationRequestedAt','verificationPublicNote','onboardingCompleted'])
+        && data.uid is string && data.uid == request.auth.uid
+        && data.email is string && data.email == request.auth.token.email
+        && data.role in ['hostel','ngo','admin']
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && data.photoURL is string && data.photoURL.size() <= 2048
+        && data.organizationName is string && data.organizationName.size() <= 160
+        && data.phone is string && data.phone.size() <= 32
+        && data.city is string && data.city.size() <= 120
+        && data.isVerified is bool && data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+    function partnerFields(data) {
+      return data.organizationName.size() >= 2 && data.city.size() >= 2
+        && data.phone.matches('^[+]?([ ()-]*[0-9]){7,15}[ ()-]*$');
+    }
+    match /users/{uid} {
+      allow get: if ownGoogleProfile(uid) || admin();
+      allow list: if admin();
+      allow delete: if false;
+      allow create: if ownGoogleProfile(uid) && validFields(request.resource.data)
+        && request.resource.data.keys().hasOnly(['uid','name','email','photoURL','role','organizationName','phone','city','isVerified','verificationStatus','verificationRequestedAt','createdAt','updatedAt','serviceRegion','state','country','isServiceable','locality','shortDescription','registrationLocation','verificationRequestedAt','onboardingCompleted'])
+        && request.resource.data.onboardingCompleted == true
+        && request.resource.data.isVerified == false
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && ((intendedAdmin() && request.resource.data.role == 'admin')
+          || (!intendedAdmin() && request.resource.data.role in ['hostel','ngo'] && partnerFields(request.resource.data) && agraProfile(request.resource.data) && request.resource.data.locality is string && request.resource.data.locality.size() >= 2 && request.resource.data.locality.size() <= 120 && (!request.resource.data.keys().hasAny(['registrationLocation']) || inAgra(request.resource.data.registrationLocation)) && request.resource.data.verificationStatus == 'pending' && request.resource.data.verificationRequestedAt == request.time
+            && organizationPair(uid,request.resource.data)));
+      // Owners can edit contact fields, never identity, role, approval or coverage.
+      // Legacy documents without onboardingCompleted remain readable and editable.
+      allow update: if (ownGoogleProfile(uid) && validFields(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','organizationName','phone','photoURL','locality','shortDescription','updatedAt'])
+        && (resource.data.role == 'admin' ? intendedAdmin() : (partnerFields(request.resource.data)
+          && safeProfileEdit(request.resource.data)
+          && (!exists(/databases/$(database)/documents/organizations/$(uid)) || organizationPair(uid,request.resource.data)))))
+        || (ownGoogleProfile(uid) && reRequest(uid)) || adminVerification(uid);
+    }
+
+    // Agra operational envelope (not a municipal polygon). A trusted backend
+    // geocoder/App Check is stronger than client-provided address metadata.
+    // Roles stay immutable; Custom Claims must be issued only with trusted Admin SDK.
+    function inAgra(p) { return p.latitude is number && p.longitude is number
+      && p.latitude >= 27.05 && p.latitude <= 27.35 && p.longitude >= 77.85 && p.longitude <= 78.20; }
+    function agraCity(city) { return city is string && city.lower().matches('^[ ]*agra([,][ ]*uttar pradesh([,][ ]*india)?)?[ ]*$'); }
+    function agraProfile(d) { return d.get('serviceRegion','') == 'agra' && d.get('isServiceable',false) == true
+      && d.city == 'Agra' && d.state == 'Uttar Pradesh' && d.country == 'India'; }
+    function activePartner() { return request.auth != null && agraProfile(get(/databases/$(database)/documents/users/$(request.auth.uid)).data); }
+    function organizationPair(uid,u) {
+      let o = getAfter(/databases/$(database)/documents/organizations/$(uid)).data;
+      return o.uid == uid && o.role == u.role && o.organizationName == u.organizationName
+        && (o.photoURL == '' || o.photoURL == u.photoURL) && o.locality == u.get('locality','Agra')
+        && o.shortDescription == u.get('shortDescription','') && o.joinedAt == u.createdAt
+        && o.isVerified == u.isVerified && o.verificationStatus == (u.isVerified ? 'verified' : u.get('verificationStatus','pending'));
+    }
+    function validOrganization(uid,d) {
+      let u = getAfter(/databases/$(database)/documents/users/$(uid)).data;
+      return d.keys().hasAll(['uid','organizationName','role','photoURL','serviceRegion','city','state','country','isServiceable','locality','shortDescription','isVerified','verificationStatus','joinedAt','publicStats','averageRating','ratingCount'])
+        && d.keys().hasOnly(['uid','organizationName','role','photoURL','serviceRegion','city','state','country','isServiceable','locality','shortDescription','isVerified','verificationStatus','joinedAt','publicStats','averageRating','ratingCount'])
+        && d.uid == uid && d.role in ['hostel','ngo'] && d.role == u.role && agraProfile(d) && agraProfile(u)
+        && d.organizationName == u.organizationName && (d.photoURL == '' || (d.photoURL == u.photoURL && profilePhoto(d.photoURL,uid)))
+        && d.photoURL is string && d.photoURL.size() <= 2048
+        && d.locality == u.get('locality','Agra') && d.locality is string && d.locality.size() >= 2 && d.locality.size() <= 120
+        && d.shortDescription == u.get('shortDescription','') && d.shortDescription is string && d.shortDescription.size() <= 280
+        && d.joinedAt == u.createdAt && d.isVerified == u.isVerified
+        && d.verificationStatus == (u.isVerified ? 'verified' : u.get('verificationStatus','pending'))
+        && d.publicStats is map && d.averageRating is number && d.averageRating >= 0 && d.averageRating <= 5
+        && d.ratingCount is int && d.ratingCount >= 0;
+    }
+    match /organizations/{uid} {
+      // Opposite-role partner discovery only. Never query private users for cards.
+      allow get, list: if admin() || (activePartner() &&
+        ((hostel() && resource.data.role == 'ngo') || (ngo() && resource.data.role == 'hostel'))
+        && resource.data.serviceRegion == 'agra' && resource.data.isServiceable == true
+        && resource.data.verificationStatus == 'verified');
+      // Owner must read their own projection for transactional initialization.
+      allow get: if ownGoogleProfile(uid);
+      allow create: if ownGoogleProfile(uid) && validOrganization(uid,request.resource.data)
+        && request.resource.data.publicStats == {} && request.resource.data.averageRating == 0 && request.resource.data.ratingCount == 0;
+      allow update: if validOrganization(uid,request.resource.data)
+        && ((ownGoogleProfile(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationName','photoURL','locality','shortDescription','isVerified','verificationStatus']) && request.resource.data.isVerified == getAfter(/databases/$(database)/documents/users/$(uid)).data.isVerified && request.resource.data.verificationStatus == getAfter(/databases/$(database)/documents/users/$(uid)).data.verificationStatus)
+          || (admin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isVerified','verificationStatus'])));
+      allow delete: if false;
+    }
+
+    // All operational role helpers require current server approval and Agra coverage.
+    function approved(d) { return d.isVerified == true && d.get('verificationStatus','') == 'verified' && agraProfile(d); }
+    function partner(role) {
+      let u = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return request.auth != null && ownGoogleProfile(request.auth.uid) && u.role == role && u.isVerified == true && u.get('verificationStatus','') == 'verified' && u.get('serviceRegion','') == 'agra' && u.get('isServiceable',false) == true;
+    }
+    function profilePhoto(url,uid) { return url == '' || url.matches('https://([A-Za-z0-9-]+[.])*googleusercontent[.]com/.*') || url.matches('https://firebasestorage[.]googleapis[.]com/v0/b/meal-f9e82[.]firebasestorage[.]app/o/profile-images%2F' + uid + '%2F[A-Za-z0-9_-]+[.](jpg|png|webp).*'); }
+    function safeProfileEdit(d) { return d.locality is string && d.locality.size() >= 2 && d.locality.size() <= 120
+      && d.shortDescription is string && d.shortDescription.size() <= 280
+      && (d.photoURL == '' || profilePhoto(d.photoURL,request.auth.uid)); }
+    // Request another review without changing the administrator's decision.
+    function reRequest(uid) {
+      let d = request.resource.data;
+      return resource.data.role in ['hostel','ngo'] && resource.data.get('verificationStatus','') == 'rejected'
+        && validFields(d) && partnerFields(d) && safeProfileEdit(d) && agraProfile(d)
+        && d.diff(resource.data).affectedKeys().hasOnly(['name','organizationName','phone','photoURL','locality','shortDescription','verificationRequestedAt','updatedAt'])
+        && d.verificationRequestedAt == request.time && d.updatedAt == request.time && organizationPair(uid,d);
+    }
+    function hostel() { return partner('hostel'); }
+    function ngo() { return partner('ngo'); }
+    function privatePath(id) { return /databases/$(database)/documents/listingPrivate/$(id); }
+    function foodPath(id) { return /databases/$(database)/documents/listings/$(id); }
+    function claimPath(id) { return /databases/$(database)/documents/claims/$(request.auth.uid + '_' + id); }
+    function hasClaim(id) {
+      return exists(claimPath(id)) && get(claimPath(id)).data.ngoId == request.auth.uid
+        && get(claimPath(id)).data.listingId == id;
+    }
+    function activeClaim(id) {
+      return hasClaim(id) && get(claimPath(id)).data.claimStatus in ['claimed','enRoute']
+        && approved(get(/databases/$(database)/documents/users/$(get(foodPath(id)).data.hostelId)).data)
+        && get(foodPath(id)).data.status != 'cancelled' && get(foodPath(id)).data.expiryTime > request.time;
+    }
+    function validImage(d, id) {
+      return d.foodImage is string && d.foodImage.size() <= 2048
+        && d.foodImagePath is string && d.foodImagePath.size() <= 300
+        && ((d.foodImage == 'assets/images/hero-meal.jpg' && d.foodImagePath == '')
+          || (d.foodImagePath.matches('listing-images/' + request.auth.uid + '/' + id + '_[A-Za-z0-9_-]+[.](jpg|png|webp)')
+            && d.foodImage.matches('https://firebasestorage[.]googleapis[.]com/v0/b/meal-f9e82[.]firebasestorage[.]app/o/listing-images%2F' + request.auth.uid + '%2F' + id + '_.*')));
+    }
+    // Phase 9: public pins are 0.02-degree cell centers, never exact coordinates.
+    // Rules pair public/private documents with getAfter, including atomic edits.
+    // Schema 2 remains readable during provider-led migration; never bulk geocode.
+    function validCoordinates(p) {
+      return p.latitude is number && p.longitude is number
+        && p.latitude >= -90 && p.latitude <= 90 && p.longitude >= -180 && p.longitude <= 180;
+    }
+    function coarseCell(n, maximum) { return n == maximum ? maximum - 0.01 : (math.floor(n * 50) * 2 + 1) / 100.0; }
+    function coarsePair(pub, exact) {
+      let lat = coarseCell(exact.latitude,90);
+      let lng = coarseCell(exact.longitude,180);
+      let coincident = math.abs(lat - exact.latitude) < 0.00000001 && math.abs(lng - exact.longitude) < 0.00000001;
+      let shifted = coincident ? (lat >= 89.99 ? lat - 0.02 : lat + 0.02) : lat;
+      return pub.latitude is number && pub.longitude is number
+        && math.abs(pub.latitude - shifted) < 0.0000001 && math.abs(pub.longitude - lng) < 0.0000001
+        && !(pub.latitude == exact.latitude && pub.longitude == exact.longitude);
+    }
+    function validPublicPin(d,id) {
+      let p = d.publicLocation;
+      let exact = getAfter(privatePath(id)).data.exactLocation;
+      return p is map && p.keys().hasOnly(['city','locality','latitude','longitude'])
+        && p.city == d.location.city && p.locality is string && p.locality.size() >= 2 && p.locality.size() <= 120
+        && coarsePair(p,exact) && inAgra(exact);
+    }
+    // Every required field is directly type/value checked below. Missing keys
+    // fail those checks; hasOnly still forbids extras. Avoid redundant hasAll
+    // to stay within Firebase's 1000-expression transaction evaluation limit.
+    function validListing(d, id) {
+      return d.keys().hasOnly(['schemaVersion','hostelVerified','collectedBoxes','hostelId','hostelName','foodName','foodImage','foodImagePath','foodType','totalBoxes','availableBoxes','claimedBoxes','mealsPerBox','readyTime','expiryTime','location','allergens','packingCondition','hygieneConfirmed','status','isPaused','createdAt','updatedAt','publicLocation','serviceRegion','city','state','country','isServiceable','locality'])
+        && d.schemaVersion in [2,3] && agraProfile(d) && d.location.city == 'Agra'
+        && d.locality is string && d.locality.size() >= 2 && d.locality.size() <= 120
+        && (d.schemaVersion != 3 || d.locality == d.publicLocation.locality)
+        && (d.schemaVersion == 3 ? validPublicPin(d,id) : !d.keys().hasAny(['publicLocation'])) && d.hostelVerified is bool
+        && d.hostelId == request.auth.uid && d.hostelName is string && d.hostelName.size() >= 2 && d.hostelName.size() <= 160
+        && d.foodName is string && d.foodName.size() >= 2 && d.foodName.size() <= 120
+        && validImage(d,id) && d.foodType in ['veg','nonVeg','mixed']
+        && d.totalBoxes is int && d.totalBoxes >= 1 && d.totalBoxes <= 500
+        && d.availableBoxes is int && d.availableBoxes >= 0
+        && d.claimedBoxes is int && d.claimedBoxes >= 0 && d.availableBoxes + d.claimedBoxes == d.totalBoxes
+        && d.collectedBoxes is int && d.collectedBoxes >= 0 && d.collectedBoxes <= d.claimedBoxes
+        && d.mealsPerBox is int && d.mealsPerBox >= 1 && d.mealsPerBox <= 50
+        && d.readyTime is timestamp && d.expiryTime is timestamp && d.expiryTime > d.readyTime
+        && d.location is map && d.location.keys().hasOnly(['city'])
+        && d.allergens is string && d.allergens.size() >= 1 && d.allergens.size() <= 200
+        && d.packingCondition in ['Sealed food-safe boxes','Individually wrapped portions','Covered food-safe containers']
+        && d.hygieneConfirmed == true && d.isPaused is bool
+        && d.status in ['available','partiallyClaimed','cancelled','claimed','collected','expired']
+        && d.createdAt is timestamp && d.updatedAt == request.time;
+    }
+    function validPrivate(d) {
+      return d.keys().hasOnly(['hostelId','exactAddress','contactPerson','contactPhone','additionalPickupInstructions','exactLocation'])
+        && (!d.keys().hasAny(['exactLocation']) || (d.exactLocation is map
+          && d.exactLocation.keys().hasOnly(['address','latitude','longitude'])
+          && d.exactLocation.address == d.exactAddress))
+        && d.hostelId == request.auth.uid
+        && d.exactAddress is string && d.exactAddress.size() >= 5 && d.exactAddress.size() <= 240
+        && d.contactPerson is string && d.contactPerson.size() >= 2 && d.contactPerson.size() <= 100
+        && d.contactPhone is string && d.contactPhone.size() <= 32
+        && d.additionalPickupInstructions is string && d.additionalPickupInstructions.size() <= 500;
+    }
+    // Query-safe discovery. Require these predicates in the client query.
+    // Expiry is filtered live by the UI; rules enforce request.time on claims and
+    // private reads. Without a scheduled function, a time-relative query cannot
+    // continuously authorize request.time. Expired schema-v2 food metadata is
+    // non-sensitive; private details stay denied. Never authorize legacy docs.
+    function publicDiscovery(d) {
+      return approved(get(/databases/$(database)/documents/users/$(d.hostelId)).data) && d.get('serviceRegion','') == 'agra' && d.get('isServiceable',false) == true && d.schemaVersion in [2,3] && d.status in ['available','partiallyClaimed'] && d.isPaused == false && d.availableBoxes > 0;
+    }
+    function activeFood(d) {
+      return activePartner() && publicDiscovery(d) && d.hostelId != request.auth.uid && d.expiryTime > request.time;
+    }
+    function allocationStatus(d) { return d.availableBoxes == 0 ? 'claimed' : 'partiallyClaimed'; }
+    // getAfter pairs the only allowed NGO counter change with its exact claim.
+    // Standalone writes, arbitrary counters/status, and replayed claims fail.
+    // Production: move this workflow to a trusted callable service, add App Check,
+    // rate limits, and Admin SDK Custom Claims. No Cloud Functions in Phase 6.
+    function claimAllocation(id, before, after) {
+      let c = getAfter(claimPath(id)).data;
+      return ngo() && activeFood(before) && !exists(claimPath(id))
+        && c.ngoId == request.auth.uid && c.listingId == id && c.hostelId == before.hostelId
+        && c.claimStatus == 'claimed' && c.createdAt == request.time
+        && after.diff(before).affectedKeys().hasOnly(['availableBoxes','claimedBoxes','status','updatedAt'])
+        && after.availableBoxes == before.availableBoxes - c.requestedBoxes && after.availableBoxes >= 0
+        && after.claimedBoxes == before.claimedBoxes + c.requestedBoxes
+        && after.status == allocationStatus(after) && after.updatedAt == request.time;
+    }
+    function claimCollection(id, before, after) {
+      let c = get(claimPath(id)).data;
+      let next = getAfter(claimPath(id)).data;
+      return ngo() && c.ngoId == request.auth.uid && c.listingId == id && c.claimStatus == 'enRoute'
+        && next.claimStatus == 'collected' && next.updatedAt == request.time
+        && before.status != 'cancelled' && before.expiryTime > request.time
+        && after.diff(before).affectedKeys().hasOnly(['collectedBoxes','status','updatedAt'])
+        && after.collectedBoxes == before.collectedBoxes + c.requestedBoxes && after.collectedBoxes <= before.claimedBoxes
+        && after.status == (after.availableBoxes == 0 && after.collectedBoxes == after.claimedBoxes ? 'collected' : before.status) && after.updatedAt == request.time;
+    }
+    function ownerUpdate(id) {
+      let d = request.resource.data;
+      let old = resource.data;
+      return activePartner() && old.hostelId == request.auth.uid && validListing(d,id)
+        && d.hostelId == old.hostelId && d.hostelName == old.hostelName && d.createdAt == old.createdAt
+        && d.claimedBoxes == old.claimedBoxes
+        && d.collectedBoxes == old.get('collectedBoxes',0)
+        && ((!(old.get('schemaVersion',0) in [2,3])
+              && d.diff(old).affectedKeys().hasOnly(['serviceRegion','city','state','country','isServiceable','locality','schemaVersion','hostelVerified','collectedBoxes','contactPerson','notes','location','updatedAt'])
+              && agraCity(old.location.city) && d.location.city == 'Agra'
+              && d.hostelVerified == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified
+              && getAfter(privatePath(id)).data.hostelId == request.auth.uid)
+          || (old.status in ['available','partiallyClaimed'] && old.expiryTime > request.time
+              && ((d.diff(old).affectedKeys().hasOnly(['isPaused','updatedAt']) && d.status == old.status)
+                || (d.diff(old).affectedKeys().hasOnly(['status','isPaused','updatedAt']) && d.status == 'cancelled' && d.isPaused == false)
+                || (d.diff(old).affectedKeys().hasOnly(['serviceRegion','city','state','country','isServiceable','locality','schemaVersion','publicLocation','foodName','foodImage','foodImagePath','foodType','totalBoxes','availableBoxes','mealsPerBox','readyTime','expiryTime','location','hostelVerified','allergens','packingCondition','hygieneConfirmed','status','updatedAt'])
+                  && old.get('schemaVersion',0) in [2,3] && d.schemaVersion >= old.schemaVersion && d.status == (d.availableBoxes == 0 ? (d.collectedBoxes == d.claimedBoxes ? 'collected' : 'claimed') : (d.claimedBoxes > 0 ? 'partiallyClaimed' : 'available'))
+                  && d.hostelVerified == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified
+                  && d.expiryTime > request.time && getAfter(privatePath(id)).data.hostelId == request.auth.uid
+                  && (d.readyTime == old.readyTime || d.readyTime >= request.time - duration.value(5,'m'))))));
+    }
+
+    function legacyControl() {
+      let d = request.resource.data;
+      return resource.data.hostelId == request.auth.uid && resource.data.status in ['available','partiallyClaimed']
+        && d.updatedAt == request.time && d.diff(resource.data).affectedKeys().hasOnly(['isPaused','status','updatedAt'])
+        && ((d.status == 'cancelled' && d.isPaused == false) || (d.status == resource.data.status && d.isPaused == true));
+    }
+    function listingRegionMigration(id) {
+      let d = request.resource.data;
+      let old = resource.data;
+      return old.hostelId == request.auth.uid && !old.keys().hasAny(['serviceRegion'])
+        && d.diff(old).affectedKeys().hasOnly(['serviceRegion','city','state','country','isServiceable','locality','updatedAt'])
+        && d.updatedAt == request.time
+        && (agraCity(old.location.city) && (old.get('schemaVersion',0) != 3 || inAgra(get(privatePath(id)).data.exactLocation))
+          ? (agraProfile(d) && d.locality is string && d.locality.size() >= 2 && d.locality.size() <= 120)
+          : (d.serviceRegion == 'outside' && d.isServiceable == false));
+    }
+
+    function adminModeration(before,after) {
+      return admin() && before.status != 'collected' && before.status != 'cancelled'
+        && after.updatedAt == request.time
+        && ((after.diff(before).affectedKeys().hasOnly(['isPaused','updatedAt']) && after.isPaused is bool
+              && before.status in ['available','partiallyClaimed'] && before.expiryTime > request.time && before.availableBoxes > 0)
+          || (after.diff(before).affectedKeys().hasOnly(['status','isPaused','updatedAt']) && after.status == 'cancelled' && after.isPaused == false));
+    }
+    match /listings/{listingId} {
+      allow get: if admin() || (hostel() && (!exists(foodPath(listingId)) || resource.data.hostelId == request.auth.uid))
+        || (ngo() && resource.data.schemaVersion in [2,3] && (publicDiscovery(resource.data) || hasClaim(listingId)));
+      allow list: if admin() || (hostel() && resource.data.hostelId == request.auth.uid) || (ngo() && publicDiscovery(resource.data));
+      allow create: if hostel() && request.resource.data.schemaVersion == 3 && validListing(request.resource.data,listingId)
+        && request.resource.data.hostelName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationName
+        && request.resource.data.hostelVerified == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified
+        && getAfter(privatePath(listingId)).data.hostelId == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.readyTime >= request.time - duration.value(5,'m') && request.resource.data.expiryTime > request.time
+        && request.resource.data.status == 'available' && request.resource.data.isPaused == false
+        && request.resource.data.claimedBoxes == 0 && request.resource.data.collectedBoxes == 0
+        && request.resource.data.availableBoxes == request.resource.data.totalBoxes;
+      allow update: if hostel() ? (ownerUpdate(listingId) || listingRegionMigration(listingId) || legacyControl())
+        : (ngo() ? (claimAllocation(listingId,resource.data,request.resource.data)
+          || claimCollection(listingId,resource.data,request.resource.data))
+          : adminModeration(resource.data,request.resource.data));
+      allow delete: if false;
+    }
+    match /listingPrivate/{listingId} {
+      allow get: if admin() || (hostel() && resource.data.hostelId == request.auth.uid)
+        || (ngo() && resource.data.hostelId == get(foodPath(listingId)).data.hostelId && activeClaim(listingId));
+      allow create, update: if hostel() && validPrivate(request.resource.data)
+        && (!exists(privatePath(listingId)) || resource.data.hostelId == request.auth.uid)
+        && getAfter(foodPath(listingId)).data.hostelId == request.auth.uid
+        && (getAfter(foodPath(listingId)).data.schemaVersion == 3
+          ? (coarsePair(getAfter(foodPath(listingId)).data.publicLocation,request.resource.data.exactLocation) && inAgra(request.resource.data.exactLocation))
+          : !request.resource.data.keys().hasAny(['exactLocation']));
+      allow list: if admin();
+      allow delete: if false;
+    }
+    function validClaim(c,id) {
+      return c.keys().hasAll(['listingId','ngoId','ngoName','hostelId','requestedBoxes','pickupETA','ngoNote','claimStatus','createdAt','updatedAt'])
+        && c.keys().hasOnly(['listingId','ngoId','ngoName','hostelId','requestedBoxes','pickupETA','ngoNote','claimStatus','createdAt','updatedAt'])
+        && c.listingId is string && id == request.auth.uid + '_' + c.listingId && c.ngoId == request.auth.uid
+        && c.ngoName is string && c.ngoName.size() >= 2 && c.ngoName.size() <= 160
+        && c.hostelId is string && c.hostelId != request.auth.uid
+        && c.requestedBoxes is int && c.requestedBoxes >= 1 && c.requestedBoxes <= 500
+        && c.pickupETA is timestamp && c.ngoNote is string && c.ngoNote.size() <= 500
+        && c.createdAt is timestamp && c.updatedAt == request.time;
+    }
+    match /claims/{id} {
+      // Deterministic own-ID get is needed to test absence before creation.
+      allow get: if admin() || (hostel() && resource.data.hostelId == request.auth.uid) || (ngo() && ((!exists(/databases/$(database)/documents/claims/$(id)) && id.matches(request.auth.uid + '_.*')) || resource.data.ngoId == request.auth.uid));
+      allow list: if admin() || (hostel() && resource.data.hostelId == request.auth.uid) || (ngo() && resource.data.ngoId == request.auth.uid);
+      allow create: if ngo() && validClaim(request.resource.data,id)
+        && request.resource.data.ngoName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationName
+        && activeFood(get(foodPath(request.resource.data.listingId)).data)
+        && request.resource.data.hostelId == get(foodPath(request.resource.data.listingId)).data.hostelId
+        && request.resource.data.pickupETA >= request.time
+        && request.resource.data.pickupETA >= get(foodPath(request.resource.data.listingId)).data.readyTime
+        && request.resource.data.pickupETA < get(foodPath(request.resource.data.listingId)).data.expiryTime
+        && request.resource.data.claimStatus == 'claimed' && request.resource.data.createdAt == request.time
+        && claimAllocation(request.resource.data.listingId,get(foodPath(request.resource.data.listingId)).data,getAfter(foodPath(request.resource.data.listingId)).data);
+      allow update: if ngo() && resource.data.ngoId == request.auth.uid && validClaim(request.resource.data,id)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimStatus','updatedAt'])
+        && get(foodPath(resource.data.listingId)).data.status != 'cancelled'
+        && get(foodPath(resource.data.listingId)).data.expiryTime > request.time
+        && ((resource.data.claimStatus == 'claimed' && request.resource.data.claimStatus == 'enRoute')
+          || (resource.data.claimStatus == 'enRoute' && request.resource.data.claimStatus == 'collected'
+            && claimCollection(resource.data.listingId,get(foodPath(resource.data.listingId)).data,getAfter(foodPath(resource.data.listingId)).data)));
+      allow delete: if false; // No cancellation/reallocation workflow in this phase.
+    }
+    // Public projection: verification state only, never profile/contact/internal notes.
+    match /organizationStatus/{uid} {
+      allow get: if admin() || hostel() || ngo();
+      allow list: if admin();
+      allow create, update: if admin()
+        && request.resource.data.keys().hasAll(['isVerified','verificationStatus','updatedAt'])
+        && request.resource.data.keys().hasOnly(['isVerified','verificationStatus','updatedAt'])
+        && request.resource.data.verificationStatus in ['pending','verified','rejected']
+        && request.resource.data.isVerified == (request.resource.data.verificationStatus == 'verified')
+        && request.resource.data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.role in ['hostel','ngo']
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.isVerified == request.resource.data.isVerified
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.verificationStatus == request.resource.data.verificationStatus
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.verificationReviewedAt == request.time;
+      allow delete: if false;
+    }
+    match /organizationModeration/{uid} {
+      allow read: if admin();
+      allow create, update: if admin()
+        && request.resource.data.keys().hasAll(['organizationId','verificationStatus','internalNote','reviewedBy','reviewedAt'])
+        && request.resource.data.keys().hasOnly(['organizationId','verificationStatus','internalNote','reviewedBy','reviewedAt','notificationId'])
+        && (!request.resource.data.keys().hasAny(['notificationId']) || (request.resource.data.notificationId is string && request.resource.data.notificationId.size() <= 1500))
+        && request.resource.data.organizationId == uid
+        && request.resource.data.verificationStatus in ['pending','verified','rejected']
+        && request.resource.data.internalNote is string && request.resource.data.internalNote.size() <= 1000
+        && request.resource.data.reviewedBy == request.auth.uid && request.resource.data.reviewedAt == request.time
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.verificationStatus == request.resource.data.verificationStatus;
+      allow delete: if false;
+    }
+    match /adminActivity/{eventId} {
+      allow read: if admin();
+      allow create: if admin()
+        && request.resource.data.keys().hasAll(['adminUid','targetKind','targetId','action','createdAt'])
+        && request.resource.data.keys().hasOnly(['adminUid','targetKind','targetId','action','createdAt'])
+        && request.resource.data.adminUid == request.auth.uid && request.resource.data.createdAt == request.time
+        && request.resource.data.targetId is string && request.resource.data.targetId.size() <= 1500
+        && ((request.resource.data.targetKind == 'organization'
+            && request.resource.data.action in ['verified','rejected','pending']
+            && getAfter(/databases/$(database)/documents/users/$(request.resource.data.targetId)).data.verificationStatus == request.resource.data.action
+            && getAfter(/databases/$(database)/documents/users/$(request.resource.data.targetId)).data.verificationReviewedAt == request.time)
+          || (request.resource.data.targetKind == 'listing' && request.resource.data.action in ['pause','resume','cancel']
+            && getAfter(foodPath(request.resource.data.targetId)).data.updatedAt == request.time
+            && (request.resource.data.action == 'cancel' ? getAfter(foodPath(request.resource.data.targetId)).data.status == 'cancelled'
+              : getAfter(foodPath(request.resource.data.targetId)).data.isPaused == (request.resource.data.action == 'pause'))));
+      allow update, delete: if false; // Append-only records; no account/listing deletion.
+    }
+
+    // Phase 8: immutable partner ratings. Future trusted Functions should produce
+    // aggregate summaries; clients publish only a rules-paired numeric score.
+    function ratingPath(id) { return /databases/$(database)/documents/ratings/$(id); }
+    function score(n) { return n is int && n >= 1 && n <= 5; }
+    function validRating(d,id) {
+      let c = get(/databases/$(database)/documents/claims/$(d.claimId)).data;
+      return ownGoogleProfile(request.auth.uid)
+        && d.keys().hasAll(['claimId','listingId','fromUserId','fromRole','toUserId','toRole','overallRating','categoryRatings','feedback','createdAt'])
+        && d.keys().hasOnly(['claimId','listingId','fromUserId','fromRole','toUserId','toRole','overallRating','categoryRatings','feedback','createdAt','publicScoreId'])
+        && d.claimId is string && id == request.auth.uid + '_' + d.claimId
+        && d.fromUserId == request.auth.uid && d.fromUserId != d.toUserId
+        && d.listingId == c.listingId && c.claimStatus == 'collected'
+        && score(d.overallRating) && d.feedback is string && d.feedback.size() <= 1000
+        && d.createdAt == request.time && d.categoryRatings is map
+        && ((d.fromRole == 'ngo' && ngo() && c.ngoId == request.auth.uid
+          && d.toRole == 'hostel' && d.toUserId == c.hostelId
+          && d.categoryRatings.keys().hasAll(['foodCondition','pickupExperience'])
+          && d.categoryRatings.keys().hasOnly(['foodCondition','pickupExperience'])
+          && score(d.categoryRatings.foodCondition) && score(d.categoryRatings.pickupExperience)
+          && d.publicScoreId is string && d.publicScoreId.size() <= 100
+          && getAfter(/databases/$(database)/documents/ratingScoreLinks/$(d.publicScoreId)).data.ratingId == id
+          && getAfter(/databases/$(database)/documents/ratingScores/$(d.publicScoreId)).data.toUserId == d.toUserId
+          && getAfter(/databases/$(database)/documents/ratingScores/$(d.publicScoreId)).data.overallRating == d.overallRating
+          && getAfter(/databases/$(database)/documents/ratingScores/$(d.publicScoreId)).data.createdAt == request.time)
+        || (d.fromRole == 'hostel' && !d.keys().hasAny(['publicScoreId']) && hostel() && c.hostelId == request.auth.uid
+          && d.toRole == 'ngo' && d.toUserId == c.ngoId
+          && d.categoryRatings.keys().hasAll(['pickupPunctuality','communication'])
+          && d.categoryRatings.keys().hasOnly(['pickupPunctuality','communication'])
+          && score(d.categoryRatings.pickupPunctuality) && score(d.categoryRatings.communication)));
+    }
+    match /ratings/{id} {
+      allow get: if admin() || ((hostel() || ngo())
+        && ((!exists(ratingPath(id)) && id.matches(request.auth.uid + '_.*'))
+          || resource.data.fromUserId == request.auth.uid || resource.data.toUserId == request.auth.uid));
+      allow list: if admin() || ((hostel() || ngo())
+        && (resource.data.fromUserId == request.auth.uid || resource.data.toUserId == request.auth.uid));
+      allow create: if request.auth != null && validRating(request.resource.data,id);
+      allow update, delete: if false;
+    }
+    function scoreLink(id) { return /databases/$(database)/documents/ratingScoreLinks/$(id); }
+    match /ratingScoreLinks/{id} {
+      // Private pairing keeps public score document IDs free of claimant IDs.
+      allow read: if admin();
+      allow create: if ngo() && request.resource.data.keys().hasAll(['ratingId'])
+        && request.resource.data.keys().hasOnly(['ratingId'])
+        && request.resource.data.ratingId is string
+        && !exists(ratingPath(request.resource.data.ratingId))
+        && getAfter(ratingPath(request.resource.data.ratingId)).data.fromUserId == request.auth.uid
+        && getAfter(ratingPath(request.resource.data.ratingId)).data.toRole == 'hostel'
+        && getAfter(ratingPath(request.resource.data.ratingId)).data.publicScoreId == id
+        && getAfter(ratingPath(request.resource.data.ratingId)).data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+    match /ratingScores/{id} {
+      allow read: if admin() || ngo() || (hostel() && resource.data.toUserId == request.auth.uid);
+      allow create: if ngo()
+        && request.resource.data.keys().hasAll(['toUserId','overallRating','createdAt'])
+        && request.resource.data.keys().hasOnly(['toUserId','overallRating','createdAt'])
+        && score(request.resource.data.overallRating) && request.resource.data.createdAt == request.time
+        && !exists(ratingPath(getAfter(scoreLink(id)).data.ratingId))
+        && getAfter(ratingPath(getAfter(scoreLink(id)).data.ratingId)).data.fromUserId == request.auth.uid
+        && getAfter(ratingPath(getAfter(scoreLink(id)).data.ratingId)).data.toRole == 'hostel'
+        && getAfter(ratingPath(getAfter(scoreLink(id)).data.ratingId)).data.publicScoreId == id
+        && getAfter(ratingPath(getAfter(scoreLink(id)).data.ratingId)).data.toUserId == request.resource.data.toUserId
+        && getAfter(ratingPath(getAfter(scoreLink(id)).data.ratingId)).data.overallRating == request.resource.data.overallRating
+        && getAfter(ratingPath(getAfter(scoreLink(id)).data.ratingId)).data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+    function eventText(d) {
+      let copy = {
+        'published':['Listing published','Your surplus food listing is now available for collection.'],
+        'claimed':['Food claimed','A collection has been reserved. Open the claim to review its progress.'],
+        'fullyClaimed':['Listing fully claimed','All available boxes in this listing have been reserved.'],
+        'enRoute':['Collector on the way','The NGO has marked this collection as en route.'],
+        'collected':['Food collected','This collection is complete. You can now share a partner rating.'],
+        'verified':['Organization verified','Your organization has been verified by MealBridge.'],
+        'rejected':['Verification review completed','Your organization verification was rejected. Contact MealBridge for follow-up.'],
+        'rating':['New partner feedback','A collection partner has shared a rating with your organization.']
+      };
+      return d.type in copy && d.title == copy[d.type][0] && d.message == copy[d.type][1];
+    }
+    function claimEvent(d,id) {
+      let path = /databases/$(database)/documents/claims/$(d.relatedClaimId);
+      let after = getAfter(path).data;
+      let recipientRole = d.recipientId == after.hostelId ? 'hostel' : 'ngo';
+      return ngo() && after.ngoId == request.auth.uid
+        && d.recipientId in [after.ngoId,after.hostelId]
+        && d.relatedListingId == after.listingId && after.updatedAt == request.time
+        && ((d.type == 'claimed' && !exists(path) && after.claimStatus == 'claimed')
+          || (d.type == 'enRoute' && get(path).data.claimStatus == 'claimed' && after.claimStatus == 'enRoute')
+          || (d.type == 'collected' && get(path).data.claimStatus == 'enRoute' && after.claimStatus == 'collected'))
+        && id == 'claim_' + d.relatedClaimId + '_' + d.type + '_' + recipientRole;
+    }
+    function fullEvent(d,id) {
+      let path = /databases/$(database)/documents/claims/$(d.relatedClaimId);
+      let c = getAfter(path).data;
+      let food = getAfter(foodPath(d.relatedListingId)).data;
+      return ngo() && !exists(path) && c.ngoId == request.auth.uid && c.claimStatus == 'claimed'
+        && c.createdAt == request.time && c.listingId == d.relatedListingId
+        && d.recipientId == c.hostelId && food.availableBoxes == 0 && food.status == 'claimed'
+        && food.updatedAt == request.time && get(foodPath(d.relatedListingId)).data.availableBoxes > 0
+        && id == 'claim_' + d.relatedClaimId + '_fullyClaimed_hostel';
+    }
+    function verificationEvent(d,id) {
+      let path = /databases/$(database)/documents/users/$(d.recipientId);
+      let after = getAfter(path).data;
+      let review = getAfter(/databases/$(database)/documents/organizationModeration/$(d.recipientId)).data;
+      return admin() && d.relatedListingId == '' && d.relatedClaimId == ''
+        && after.verificationStatus == d.type && after.verificationReviewedAt == request.time
+        && (get(path).data.isVerified != after.isVerified
+          || get(path).data.get('verificationStatus','pending') != d.type)
+        && review.notificationId == id && review.reviewedAt == request.time;
+    }
+    function ratingEvent(d,id) {
+      let rid = request.auth.uid + '_' + d.relatedClaimId;
+      let after = getAfter(ratingPath(rid)).data;
+      return (hostel() || ngo()) && !exists(ratingPath(rid)) && after.fromUserId == request.auth.uid
+        && after.toUserId == d.recipientId && after.listingId == d.relatedListingId
+        && after.createdAt == request.time && id == 'rating_' + rid;
+    }
+    match /notifications/{id} {
+      // Phase 10: inbox privacy includes administrators. Only the recipient reads
+      // or marks their notifications; moderation uses its own audit collections.
+      allow read: if (admin() || hostel() || ngo())
+        && resource.data.recipientId == request.auth.uid;
+      // Source transactions are checked against before/after state. A future
+      // trusted Function should guarantee delivery independently of the client.
+      allow create: if request.auth != null && ownGoogleProfile(request.auth.uid)
+        && request.resource.data.keys().hasAll(['recipientId','title','message','type','relatedListingId','relatedClaimId','isRead','createdAt'])
+        && request.resource.data.keys().hasOnly(['recipientId','title','message','type','relatedListingId','relatedClaimId','isRead','createdAt'])
+        && request.resource.data.recipientId is string
+        && request.resource.data.relatedListingId is string && request.resource.data.relatedClaimId is string
+        && request.resource.data.isRead == false && request.resource.data.createdAt == request.time
+        && eventText(request.resource.data)
+        && ((request.resource.data.type == 'published' && hostel()
+          && id == 'listing_' + request.resource.data.relatedListingId + '_published'
+          && request.resource.data.relatedClaimId == '' && request.resource.data.recipientId == request.auth.uid
+          && !exists(foodPath(request.resource.data.relatedListingId))
+          && getAfter(foodPath(request.resource.data.relatedListingId)).data.hostelId == request.auth.uid
+          && getAfter(foodPath(request.resource.data.relatedListingId)).data.createdAt == request.time)
+        || (request.resource.data.type in ['claimed','enRoute','collected'] && claimEvent(request.resource.data,id))
+        || (request.resource.data.type == 'fullyClaimed' && fullEvent(request.resource.data,id))
+        || (request.resource.data.type in ['verified','rejected'] && verificationEvent(request.resource.data,id))
+        || (request.resource.data.type == 'rating' && ratingEvent(request.resource.data,id)));
+      allow update: if (admin() || hostel() || ngo())
+        && resource.data.recipientId == request.auth.uid && request.resource.data.isRead == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      allow delete: if false;
+    }
+
+    // No role field or public client can grant admin capabilities. All else denied.
+    match /{document=**} { allow read, write: if false; }
+  }
+}
+

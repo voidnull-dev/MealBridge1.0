@@ -1,0 +1,91 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "listings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "serviceRegion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isServiceable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "schemaVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isPaused",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "availableBoxes",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "organizations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "serviceRegion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isServiceable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "verificationStatus",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "listings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hostelId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "serviceRegion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isServiceable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "schemaVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isPaused",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "availableBoxes",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

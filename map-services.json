@@ -1,0 +1,7 @@
+{
+  "leafletCSS": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+  "leafletJS": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+  "tiles": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  "geocoder": "https://nominatim.openstreetmap.org/search",
+  "router": "https://router.project-osrm.org/route/v1/driving"
+}

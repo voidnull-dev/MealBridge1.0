@@ -1,0 +1,10 @@
+/* Phase 10: shared accessibility safeguards; existing visual tokens/layouts stay. */
+:where(a,button,input,select,textarea):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.db-text-button,.db-listing-actions button,.mb-notification-actions button{min-height:28px}
+.mb-place-result:focus-visible{outline-offset:-4px}
+:where(input,textarea){caret-color:var(--accent)}
+:where([role=alert],.db-form-error){overflow-wrap:anywhere}
+.mb-map-host{isolation:isolate}
+@media(pointer:coarse){.db-text-button,.db-listing-actions button,.mb-notification-actions button{min-height:44px}.leaflet-control-zoom a{min-width:44px;min-height:44px;line-height:44px!important}.db-switch,.db-checkbox{min-height:44px}}
+@media(forced-colors:active){.button,.icon-button,.db-pill,.mb-pin,.db-text-button{border:1px solid ButtonText}.mb-stars input:checked+span{outline:2px solid Highlight}.mb-map .leaflet-tile-pane{filter:none}.db-dialog::backdrop,.auth-dialog::backdrop{backdrop-filter:none}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}}

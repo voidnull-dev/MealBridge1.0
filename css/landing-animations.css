@@ -1,0 +1,12 @@
+/* Only animation mechanics. The existing layout and copy stay intact. */
+.landing-image-plane {position:relative;width:100%;height:100%;transform-style:preserve-3d;transform-origin:50% 50%;backface-visibility:hidden}
+.film-hero-media .landing-image-plane>img {width:100%;height:100%;object-fit:cover;object-position:52% 45%;display:block}
+.landing-image-stage {perspective:1200px}
+.landing-image-stage figcaption {z-index:3}
+.landing-image-stage .landing-image-plane {will-change:auto}
+.landing-image-stage.is-depth-active .landing-image-plane {will-change:transform}
+.film-page .story-scene,.film-page .footer {--credits-opacity:1;--credits-y:0px}
+@media(prefers-reduced-motion:reduce){
+ .film-page .story-scene,.film-page .footer,.film-page .film-hero :is(.film-line,.hero-buttons,.film-hero-description,.film-partner-link),.film-page .story-closing :is(h2>span,.story-closing-actions) {opacity:1!important;transform:none!important;filter:none!important}
+ .landing-image-plane {transform:none!important}.film-hero-media .landing-image-plane>img {transform:none!important;filter:none!important}
+}

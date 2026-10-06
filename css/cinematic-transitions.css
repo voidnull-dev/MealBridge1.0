@@ -1,0 +1,39 @@
+/* A film stage is an image treatment, never a content card. */
+.cinematic-image-stage {perspective:1100px;isolation:isolate;--stage-x:0px;--stage-y:0px;--stage-angle:0deg;--stage-scale:1;--stage-blur:0px;--stage-exposure:1}
+.cinematic-image-stage>img {backface-visibility:hidden;rotate:1 1 0 var(--stage-angle);translate:var(--stage-x) var(--stage-y);scale:var(--stage-scale)}
+.cinematic-image-stage>.cinematic-depth-plane {position:absolute!important;inset:0;pointer-events:none;z-index:0;opacity:.22;scale:calc(var(--stage-scale) + .035);translate:calc(var(--stage-x)*-.4) calc(var(--stage-y)*-.35);clip-path:inset(0 0 68% 0)}
+.cinematic-image-stage>.cinematic-depth-plane.plane-near {clip-path:inset(65% 0 0 0);translate:calc(var(--stage-x)*1.35) calc(var(--stage-y)*1.3);scale:calc(var(--stage-scale) + .015);opacity:.2}
+.cinematic-image-stage>.cinematic-stage-light {position:absolute;inset:-15%;pointer-events:none;z-index:1;background:linear-gradient(112deg,transparent 25%,rgba(222,176,109,.12) 45%,rgba(114,221,182,.035) 56%,transparent 72%);translate:var(--light-x,-30%) 0;opacity:var(--light-opacity,.4);mix-blend-mode:screen}
+.cinematic-image-stage>.cinematic-stage-shade {position:absolute;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse at 50% 45%,transparent 35%,rgba(0,8,12,.25) 100%);box-shadow:inset var(--shadow-x,0px) -16px 55px #02080c20}
+.cinematic-image-stage>figcaption {z-index:3}
+.cinematic-image-stage:not(.film-hero-media) {filter:brightness(var(--stage-exposure)) blur(var(--stage-blur));clip-path:inset(var(--stage-mask,0%) 0 0 0)}
+.film-hero-media.cinematic-image-stage {filter:brightness(var(--stage-exposure)) blur(var(--stage-blur))}
+.film-hero-media .film-photo-shade {z-index:2}.film-hero-media .film-contours,.film-hero-media .film-grain {z-index:3}
+.film-hero-copy {translate:0 var(--hero-copy-y,0px);opacity:var(--hero-copy-opacity,1)}
+.story-scene {--scene-veil:0;--scene-light:.02}
+.story-scene::before {content:'';position:absolute;inset:0;pointer-events:none;z-index:2;background:linear-gradient(180deg,rgba(3,9,14,var(--scene-veil)),transparent 35%);opacity:1}
+.story-closing::before {z-index:-1;background:linear-gradient(90deg,rgba(8,14,22,.94),rgba(8,14,22,.35) 80%)}
+.story-problem::after {content:'';position:absolute;right:50%;bottom:-35px;height:110px;width:1px;background:linear-gradient(transparent,var(--accent));opacity:var(--route-emerge,0);transform-origin:top;scale:1 var(--route-emerge,0);pointer-events:none}
+.story-chapter-copy {opacity:var(--chapter-ink,1)}
+.story-trust-symbol {transform:translateY(var(--seal-y,0px)) scale(var(--seal-scale,1));filter:drop-shadow(0 3px 12px rgba(110,220,175,var(--seal-glow,0)))}
+.story-trust-inner h2 {clip-path:inset(var(--trust-mask,0%) 0 var(--trust-mask,0%) 0)}
+.story-trust-texture::after {content:'';position:absolute;inset:-5%;background:url('../assets/images/dream-grain.png');opacity:.065;translate:var(--grain-x,0px) 0;pointer-events:none}
+.story-trust::before {background:linear-gradient(180deg,rgba(2,7,6,var(--scene-veil)),transparent 45%)}
+.story-agra-lines path {stroke-dasharray:1;stroke-dashoffset:var(--contour-draw,0)}
+.story-route-light {fill:var(--film-amber);stroke:none;filter:drop-shadow(0 0 4px #d3ab6c55);opacity:.85}
+.story-impact {background:radial-gradient(ellipse at 50% 55%,rgba(67,177,131,var(--impact-glow,.035)),transparent 65%)}
+.story-closing-image .cinematic-stage-light {opacity:var(--closing-sweep,0)}
+.film-page .footer {opacity:var(--credits-opacity,1);translate:0 var(--credits-y,0px)}
+.cinematic-progress {position:fixed;right:14px;top:36vh;height:28vh;width:1px;background:var(--border);z-index:15;pointer-events:none;color:var(--muted)}
+.cinematic-progress-fill {display:block;width:1px;height:100%;background:var(--accent);transform:scaleY(var(--page-progress,0));transform-origin:top}
+.cinematic-progress-label {position:absolute;right:8px;top:calc(var(--page-progress,0)*100%);font-size:10px;white-space:nowrap;writing-mode:vertical-rl;translate:0 -50%;opacity:.65}
+@media(max-width:1023px){.cinematic-progress,.cinematic-depth-plane,.cinematic-stage-light,.story-problem::after {display:none}.cinematic-image-stage>img {rotate:none;translate:none;scale:1}.cinematic-image-stage {filter:none!important;clip-path:none!important}.story-scene::before {display:none}}
+@media(prefers-reduced-motion:reduce){.cinematic-progress,.cinematic-depth-plane,.cinematic-stage-light,.story-route-light {display:none}.cinematic-image-stage,.cinematic-image-stage>img,.film-hero-copy,.story-trust-symbol,.film-page .footer {translate:none!important;rotate:none!important;scale:1!important;filter:none!important;opacity:1!important;clip-path:none!important}.story-scene::before,.story-problem::after {display:none}.story-agra-lines path {stroke-dashoffset:0!important}.story-trust-inner h2 {clip-path:none!important}}
+@media(forced-colors:active){.cinematic-stage-light,.cinematic-stage-shade,.cinematic-progress,.story-route-light {display:none}.cinematic-image-stage {filter:none!important}}
+
+/* Retain AA contrast even during the closing-credit fade. */
+.cinematic-progress-label {opacity:1}
+.film-page .footer :is(p,nav a,nav button,.footer-bottom) {color:var(--fg)}
+
+.cinematic-progress-label {background:var(--bg);color:var(--fg);padding:5px 3px}
+

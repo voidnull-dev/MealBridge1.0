@@ -1,0 +1,65 @@
+/* Phase 2 additions only. Inherits every surface, color, and font token. */
+.nav-auth-entry{display:none!important}
+.header:has(.auth-account:not([hidden])){height:auto;flex-wrap:wrap;padding-block:24px;row-gap:14px}
+.auth-account{flex-basis:100%;display:flex;align-items:center;gap:12px;padding-top:16px;border-top:1px solid var(--border)}
+.account-avatar{position:relative;width:36px;height:36px;flex-shrink:0;border-radius:50%;display:grid;place-items:center;background:var(--surface2);color:var(--accent);font-size:12px;overflow:hidden}
+.account-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.account-name{font-size:13px;font-weight:500;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-role{color:var(--accent);border:1px solid var(--border);padding:3px 8px;border-radius:4px;font-size:11px}
+.auth-account .account-profile{margin-left:auto}
+.auth-account button{background:none;border:0;min-height:44px;padding:8px;color:var(--muted);font-size:13px}
+.auth-account button:hover{color:var(--accent)}
+.auth-account :is(.hostel-workspace-link,.ngo-workspace-link,.admin-workspace-link){display:inline-flex;align-items:center;min-height:44px;font-size:12px;color:var(--accent);padding:8px}
+.auth-dialog-open{overflow:hidden}
+.auth-dialog{width:min(590px,calc(100% - 32px));max-height:calc(100dvh - 32px);padding:0;margin:auto;overflow:auto;border:1px solid var(--border);border-radius:16px;background:var(--bg);color:var(--fg);box-shadow:0 24px 100px #0006}
+.auth-dialog::backdrop{background:#000b;backdrop-filter:blur(8px)}
+.auth-shell{position:relative;padding:40px}
+.auth-close{position:absolute;right:18px;top:18px;font-size:24px;color:var(--muted)}
+.auth-brand{margin-bottom:32px;font-size:21px}
+.auth-brand img{width:28px}
+.auth-dialog h2{font-size:34px;line-height:1.2;max-width:420px;margin:0 0 16px}
+.auth-dialog p{font-size:14px;line-height:1.8}
+.auth-dialog .auth-intro{max-width:430px;margin-bottom:26px}
+.auth-divider{height:1px;background:var(--border);margin:26px 0}
+.google-button{width:100%;gap:14px;min-height:52px;background:var(--fg);color:var(--bg);border:0;font-size:14px}
+.google-button svg{width:20px;height:20px;flex-shrink:0}
+.google-button span{font-size:14px}
+.auth-dialog button:disabled{opacity:.65;cursor:wait;transform:none;filter:none}
+.auth-note{margin-top:20px;font-size:12px!important;color:var(--muted)}
+.auth-error{border:1px solid #b88969;background:var(--surface);padding:12px 15px;border-radius:8px;font-size:13px;line-height:1.7;margin-top:20px;color:var(--fg)}
+.auth-loading{display:flex;align-items:center;gap:12px;margin-block:28px}
+.auth-loading-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:auth-pulse 1.5s 4}
+.auth-dialog fieldset{border:0;margin:0;padding:0;min-width:0}
+.auth-dialog legend{font-size:13px;margin-bottom:12px;font-weight:600}
+.onboarding-roles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+.onboarding-role{padding:16px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:10px;min-height:90px;font:inherit;transition:border-color .2s}
+.onboarding-role strong{display:block;font-size:14px;font-weight:600;color:var(--fg)}
+.onboarding-role span{display:block;color:var(--muted);font-size:12px;margin-top:5px}
+.onboarding-role[aria-pressed=true]{border-color:var(--accent)}
+.onboarding-role[aria-pressed=true] strong{color:var(--accent)}
+.auth-fields{display:grid;grid-template-columns:1fr 1fr;gap:18px 14px}
+.auth-field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.auth-field label{font-size:12px;color:var(--fg)}
+.auth-field input{width:100%;min-height:46px;min-width:0;padding:11px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--fg);font-family:inherit;font-size:16px;caret-color:var(--accent)}
+.auth-field input::placeholder{color:var(--muted);opacity:1}
+.auth-field input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.auth-field input:user-invalid{border-color:#b88969}
+.auth-field-wide{grid-column:1/-1}
+.auth-dialog #profile-submit{margin-top:24px;width:100%;min-height:50px}
+.auth-success-symbol{width:54px;height:54px;border:1px solid var(--border);display:grid;place-items:center;border-radius:50%;color:var(--accent);margin:10px 0 22px}
+.auth-success-symbol svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.5}
+.auth-success-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.auth-toast-region{position:fixed;z-index:150;right:24px;bottom:24px;width:min(420px,calc(100% - 48px));pointer-events:none}
+.auth-toast{display:flex;align-items:center;gap:12px;background:var(--surface2);color:var(--fg);border:1px solid var(--border);border-radius:10px;padding:14px 12px 14px 18px;box-shadow:0 12px 40px #0003;pointer-events:auto;font-size:13px;line-height:1.6}
+.auth-toast-success{border-color:var(--accent)}
+.auth-toast-loading{border-color:var(--accent)}
+.auth-inline-toasts:not(:empty){margin-top:18px}
+.auth-inline-toasts .auth-toast{box-shadow:none}
+.auth-toast-error{border-color:#b88969}
+.auth-toast button{border:0;background:none;color:var(--muted);min-width:44px;min-height:44px;font-size:24px;margin-left:auto}
+@keyframes auth-pulse{50%{opacity:.4}}
+@media(max-width:1100px){.account-name{max-width:200px}}
+@media(max-width:800px){.nav-auth-entry:not([hidden]){display:inline-flex!important}.header-actions>.auth-entry{display:none!important}}
+@media(min-width:601px) and (max-width:800px){.header nav{gap:12px}.header nav a{font-size:12px}}
+@media(max-width:600px){.auth-shell{padding:30px 22px}.auth-brand{margin-bottom:26px}.auth-dialog h2{font-size:29px}.auth-fields{grid-template-columns:1fr}.auth-account{gap:8px;padding-top:10px;flex-wrap:wrap}.account-name{max-width:80px}.auth-account button{margin-left:auto;padding-inline:3px;font-size:12px}.account-role{font-size:10px;padding:3px 6px}.auth-account .account-avatar{width:30px;height:30px}.onboarding-role{padding:13px}.auth-toast-region{right:16px;bottom:16px;width:calc(100% - 32px)}}
+@media(prefers-reduced-motion:reduce){.auth-loading-dot{animation:none}.auth-dialog::backdrop{backdrop-filter:none}}

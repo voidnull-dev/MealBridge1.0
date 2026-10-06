@@ -1,0 +1,58 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Firebase Console -> Storage -> Rules: deploy for meal-f9e82.firebasestorage.app.
+    // Accept the Console prompt to allow Storage rules to read the default Firestore
+    // database (cross-service permission). Deploy Firestore rules and user profiles first.
+    function hostel(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email_verified == true
+        && firestore.get(/databases/(default)/documents/users/$(uid)).data.role == 'hostel'
+        && firestore.get(/databases/(default)/documents/users/$(uid)).data.isVerified == true
+        && firestore.get(/databases/(default)/documents/users/$(uid)).data.get('verificationStatus','') == 'verified'
+        && firestore.get(/databases/(default)/documents/users/$(uid)).data.get('serviceRegion','') == 'agra'
+        && firestore.get(/databases/(default)/documents/users/$(uid)).data.get('isServiceable',false) == true;
+    }
+    match /listing-images/{uid}/{fileName} {
+      allow get: if hostel(uid);
+      allow list: if false;
+      // New unique objects only: never overwrite another listing's current photo.
+      allow create: if hostel(uid) && firestore.get(/databases/(default)/documents/users/$(uid)).data.get('serviceRegion','') == 'agra'
+        && firestore.get(/databases/(default)/documents/users/$(uid)).data.get('isServiceable',false) == true && resource == null
+        && request.resource.size > 0 && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType in ['image/jpeg','image/png','image/webp']
+        && request.resource.metadata.hostelId == uid
+        && request.resource.metadata.listingId is string
+        && request.resource.metadata.listingId.matches('[A-Za-z0-9_-]+')
+        && fileName.matches(request.resource.metadata.listingId + '_[A-Za-z0-9_-]+[.](jpg|png|webp)')
+        && ((request.resource.contentType == 'image/jpeg' && fileName.matches('.*[.]jpg'))
+          || (request.resource.contentType == 'image/png' && fileName.matches('.*[.]png'))
+          || (request.resource.contentType == 'image/webp' && fileName.matches('.*[.]webp')));
+      allow update: if false;
+      allow delete: if hostel(uid); // Owner cleanup of failed/replaced uploads only.
+    }
+    // Profile images are the only upload allowed while a partner awaits review.
+    // Listing-food uploads above always require current organization approval.
+    match /profile-images/{uid}/{fileName} {
+      function owner() { return request.auth != null && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email_verified == true
+        && firestore.get(/databases/(default)/documents/users/$(uid)).data.role in ['hostel','ngo']; }
+      allow get, delete: if owner();
+      allow list, update: if false;
+      allow create: if owner() && resource == null && request.resource.size > 0 && request.resource.size < 5 * 1024 * 1024
+        && request.resource.metadata.profileUid == uid
+        && fileName.matches('[A-Za-z0-9_-]+[.](jpg|png|webp)')
+        && ((request.resource.contentType == 'image/jpeg' && fileName.matches('.*[.]jpg'))
+          || (request.resource.contentType == 'image/png' && fileName.matches('.*[.]png'))
+          || (request.resource.contentType == 'image/webp' && fileName.matches('.*[.]webp')));
+    }
+    // Rules validate metadata, not file bytes. Browser signature/decode checks are
+    // defense in depth; a trusted scanner/quarantine pipeline is needed to reject
+    // MIME-spoofed uploads from a modified client in a future security phase.
+    // Download URLs contain bearer tokens: anyone holding the URL can view that image.
+    // Do not upload private documents. Future NGO access needs explicit rules/claims.
+    match /{path=**} { allow read, write: if false; }
+  }
+}
